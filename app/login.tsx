@@ -12,6 +12,9 @@ import {
     View,
 } from "react-native";
 
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+
 type LoginForm = {
   email: string;
   motDePasse: string;
@@ -27,7 +30,7 @@ export default function Login() {
 
   const onSubmit = async (data: LoginForm) => {
     try {
-      const res = await fetch("http://192.168.18.9:3000/api/patient/login", {
+      const res = await fetch(`${API_URL}/api/patient/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),

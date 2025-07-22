@@ -11,6 +11,8 @@ import {
     TextInput,
     View,
 } from "react-native";
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
 
 type FormData = {
   prenom: string;
@@ -33,7 +35,7 @@ export default function Register() {
   const onSubmit = async (data: FormData) => {
     try {
       const response = await fetch(
-        "http://192.168.18.9:3000/api/patient/signup", // ✅ fonctionne avec simulateur Android
+    `${API_URL}/api/patient/signup`, // ✅ fonctionne avec simulateur Android
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
