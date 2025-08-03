@@ -1,12 +1,15 @@
 import { fetchRendezvous } from "@/lib/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Button,
   FlatList,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 
@@ -29,19 +32,64 @@ export default function RendezvousIndex() {
   const [erreur, setErreur] = useState<string>("");
   const router = useRouter();
 
+  const API_URL = "http://192.168.2.16:3000"; // 🔧 adapte à ton IP locale
+
   useEffect(() => {
-    const load = async () => {
-      try {
-        const data: RendezVous[] = await fetchRendezvous();
-        setRendezvous(data);
-      } catch (err: any) {
-        setErreur(err.message || "Erreur inconnue");
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+    loadRendezvous();
   }, []);
+
+  const loadRendezvous = async () => {
+    try {
+      const data: RendezVous[] = await fetchRendezvous();
+      setRendezvous(data);
+    } catch (err: any) {
+      setErreur(err.message || "Erreur inconnue");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const supprimerRendezvous = async (id: number) => {
+    Alert.alert(
+      "Confirmation",
+      "Voulez-vous vraiment annuler ce rendez-vous ?",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Oui, supprimer",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem("token");
+              const res = await fetch(
+                `${API_URL}/api/patient/rendezvous/${id}`,
+                {
+                  method: "DELETE",
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                  },
+                }
+              );
+
+              if (!res.ok) {
+                const result = await res.json();
+                Alert.alert(
+                  "Erreur",
+                  result.message || "Échec de la suppression"
+                );
+                return;
+              }
+
+              setRendezvous((prev) => prev.filter((r) => r.id !== id));
+              Alert.alert("Succès", "Rendez-vous annulé.");
+            } catch (err) {
+              Alert.alert("Erreur", "Impossible de contacter le serveur.");
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -64,7 +112,7 @@ export default function RendezvousIndex() {
         <FlatList
           data={rendezvous}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }: { item: RendezVous }) => (
+          renderItem={({ item }) => (
             <View style={styles.card}>
               <Text style={styles.date}>
                 📅 {item.date.slice(0, 10)} à {item.heure}
@@ -72,6 +120,13 @@ export default function RendezvousIndex() {
               <Text>Médecin : {item.medecin.utilisateur.nom}</Text>
               <Text>Type : {item.typeConsultation}</Text>
               <Text>Rappel : {item.rappel ? "Oui" : "Non"}</Text>
+
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={() => supprimerRendezvous(item.id)}
+              >
+                <Text style={styles.deleteText}>🗑️ Annuler</Text>
+              </TouchableOpacity>
             </View>
           )}
         />
@@ -110,5 +165,13 @@ const styles = StyleSheet.create({
   date: {
     fontWeight: "bold",
     marginBottom: 4,
+  },
+  deleteButton: {
+    marginTop: 8,
+    alignSelf: "flex-end",
+  },
+  deleteText: {
+    color: "#b91c1c",
+    fontWeight: "bold",
   },
 });
