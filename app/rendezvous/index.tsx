@@ -1,6 +1,6 @@
 import { fetchRendezvous } from "@/lib/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -121,12 +121,16 @@ export default function RendezvousIndex() {
               <Text>Type : {item.typeConsultation}</Text>
               <Text>Rappel : {item.rappel ? "Oui" : "Non"}</Text>
 
-              <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={() => supprimerRendezvous(item.id)}
-              >
-                <Text style={styles.deleteText}>🗑️ Annuler</Text>
-              </TouchableOpacity>
+              <View style={styles.actionsRow}>
+<Link href={{ pathname: "/rendezvous/[id]", params: { id: item.id.toString() } }}>
+  <Text style={styles.editText}>✏️ Modifier</Text>
+</Link>
+
+  <TouchableOpacity onPress={() => supprimerRendezvous(item.id)}>
+    <Text style={styles.deleteText}>🗑️ Annuler</Text>
+  </TouchableOpacity>
+</View>
+
             </View>
           )}
         />
@@ -173,5 +177,13 @@ const styles = StyleSheet.create({
   deleteText: {
     color: "#b91c1c",
     fontWeight: "bold",
-  },
+  },actionsRow: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  marginTop: 8,
+},
+editText: {
+  color: "#0284c7", // bleu clair
+  fontWeight: "bold",
+},
 });
