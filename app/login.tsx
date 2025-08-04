@@ -2,15 +2,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Link, useRouter } from "expo-router";
 import { Controller, useForm } from "react-hook-form";
 import {
-    Alert,
-    Button,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  Alert,
+  Button,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
+
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 

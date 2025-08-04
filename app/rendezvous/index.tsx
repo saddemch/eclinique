@@ -32,7 +32,7 @@ export default function RendezvousIndex() {
   const [erreur, setErreur] = useState<string>("");
   const router = useRouter();
 
-  const API_URL = "http://192.168.2.16:3000"; // 🔧 adapte à ton IP locale
+  const API_URL = process.env.EXPO_PUBLIC_API_URL; // 🔧 adapte à ton IP locale
 
   useEffect(() => {
     loadRendezvous();

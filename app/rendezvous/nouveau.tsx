@@ -74,7 +74,7 @@ export default function NouveauRendezVous() {
   const [medecinId, setMedecinId] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const API_URL = "http://192.168.2.16:3000";
+  const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
   useEffect(() => {
     const fetchMedecins = async () => {
