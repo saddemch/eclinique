@@ -5,25 +5,20 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    Alert,
-    Image,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Alert,
+  Image,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 
-interface UserProfile {
-  nom: string;
-  prenom: string;
-  email: string;
-  telephone: string;
-  adresse: string;
-  dateNaissance: string;
-}
+import { UserProfile as ApiUserProfile, getProfile, updateProfile } from "../services/profile";
+
+type UserProfile = ApiUserProfile;
 
 export default function Profil() {
   const router = useRouter();
@@ -38,35 +33,21 @@ export default function Profil() {
 
   const loadUserProfile = async () => {
     try {
-      const [nom, prenom, email, telephone, adresse, dateNaissance] = await Promise.all([
-        AsyncStorage.getItem("nom"),
-        AsyncStorage.getItem("prenom"),
-        AsyncStorage.getItem("email"),
-        AsyncStorage.getItem("telephone"),
-        AsyncStorage.getItem("adresse"),
-        AsyncStorage.getItem("dateNaissance"),
-      ]);
-
-      const userProfile: UserProfile = {
-        nom: nom || "",
-        prenom: prenom || "",
-        email: email || "",
-        telephone: telephone || "",
-        adresse: adresse || "",
-        dateNaissance: dateNaissance || "",
-      };
-
-      setProfile(userProfile);
-      setEditedProfile(userProfile);
+      setIsLoading(true);
+      const data = await getProfile();
+      // nettoie les champs mdp (jamais pré-remplis)
+      const clean: UserProfile = { ...data, currentPassword: "", newPassword: "", newPasswordConfirm: "" };
+      setProfile(clean);
+      setEditedProfile(clean);
     } catch (error) {
       console.error("Erreur lors du chargement du profil:", error);
       Alert.alert("Erreur", "Impossible de charger le profil");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleEdit = () => {
-    setIsEditing(true);
-  };
+  const handleEdit = () => setIsEditing(true);
 
   const handleCancel = () => {
     setIsEditing(false);
@@ -78,24 +59,66 @@ export default function Profil() {
 
     try {
       setIsLoading(true);
-      
-      // Ici, vous pourriez appeler votre API pour mettre à jour le profil
-      // Pour l'instant, on met à jour le stockage local
-      await Promise.all([
-        AsyncStorage.setItem("nom", editedProfile.nom),
-        AsyncStorage.setItem("prenom", editedProfile.prenom),
-        AsyncStorage.setItem("email", editedProfile.email),
-        AsyncStorage.setItem("telephone", editedProfile.telephone),
-        AsyncStorage.setItem("adresse", editedProfile.adresse),
-        AsyncStorage.setItem("dateNaissance", editedProfile.dateNaissance),
-      ]);
 
-      setProfile(editedProfile);
+      // Validation locale minimale (utile pour UX)
+      const wantsPwdChange = !!(
+        editedProfile.currentPassword ||
+        editedProfile.newPassword ||
+        editedProfile.newPasswordConfirm
+      );
+      if (wantsPwdChange) {
+        if (!editedProfile.currentPassword || !editedProfile.newPassword || !editedProfile.newPasswordConfirm) {
+          Alert.alert("Erreur", "Pour changer le mot de passe, remplissez les trois champs.");
+          setIsLoading(false);
+          return;
+        }
+        if (editedProfile.newPassword !== editedProfile.newPasswordConfirm) {
+          Alert.alert("Erreur", "La confirmation ne correspond pas au nouveau mot de passe.");
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // Tous les champs Patient sont NOT NULL dans ton schéma → on envoie tout
+      const payload: UserProfile = {
+        nom: editedProfile.nom?.trim() || "",
+        prenom: editedProfile.prenom?.trim() || "",
+        email: editedProfile.email?.trim() || "",
+        telephone: editedProfile.telephone?.trim() || "",
+        adresse: editedProfile.adresse?.trim() || "",
+        dateNaissance: editedProfile.dateNaissance?.trim() || "",
+        ...(wantsPwdChange ? {
+          currentPassword: editedProfile.currentPassword,
+          newPassword: editedProfile.newPassword,
+          newPasswordConfirm: editedProfile.newPasswordConfirm,
+        } : {}),
+      };
+
+      const saved = await updateProfile(payload);
+
+      // Nettoie les champs mdp côté UI après sauvegarde
+      const next: UserProfile = {
+        ...saved,
+        currentPassword: "",
+        newPassword: "",
+        newPasswordConfirm: "",
+      };
+
+      setProfile(next);
+      setEditedProfile(next);
       setIsEditing(false);
-      Alert.alert("Succès", "Profil mis à jour avec succès");
-    } catch (error) {
+
+      if (saved.passwordChanged) {
+        Alert.alert("Succès", "Profil mis à jour. Mot de passe modifié.");
+        // En prod, tu peux forcer la reconnexion :
+        // await AsyncStorage.removeItem("token");
+        // router.replace("/");
+      } else {
+        Alert.alert("Succès", "Profil mis à jour avec succès");
+      }
+    } catch (error: any) {
       console.error("Erreur lors de la sauvegarde:", error);
-      Alert.alert("Erreur", "Impossible de sauvegarder le profil");
+      Alert.alert("Erreur", error?.message ?? "Impossible de sauvegarder le profil");
     } finally {
       setIsLoading(false);
     }
@@ -139,7 +162,7 @@ export default function Profil() {
           end={{ x: 1, y: 1 }}
         >
           <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Chargement du profil...</Text>
+            <Text style={styles.loadingText}>{isLoading ? "Chargement du profil..." : "Profil non disponible"}</Text>
           </View>
         </LinearGradient>
       </SafeAreaView>
@@ -185,8 +208,8 @@ export default function Profil() {
                 <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
                   <Text style={styles.cancelButtonText}>Annuler</Text>
                 </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.saveButton} 
+                <TouchableOpacity
+                  style={styles.saveButton}
                   onPress={handleSave}
                   disabled={isLoading}
                 >
@@ -202,7 +225,7 @@ export default function Profil() {
           {/* Informations du profil */}
           <View style={styles.profileSection}>
             <Text style={styles.sectionTitle}>Informations personnelles</Text>
-            
+
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Prénom</Text>
               {isEditing ? (
@@ -284,12 +307,68 @@ export default function Profil() {
                   style={styles.input}
                   value={editedProfile?.dateNaissance || ""}
                   onChangeText={(value) => updateField("dateNaissance", value)}
-                  placeholder="JJ/MM/AAAA"
+                  placeholder="YYYY-MM-DD"
+                  autoCapitalize="none"
                 />
               ) : (
                 <Text style={styles.fieldValue}>
-                  {profile.dateNaissance ? new Date(profile.dateNaissance).toLocaleDateString('fr-FR') : "Non renseignée"}
+                  {profile.dateNaissance
+                    ? new Date(profile.dateNaissance).toLocaleDateString("fr-FR")
+                    : "Non renseignée"}
                 </Text>
+              )}
+            </View>
+          </View>
+
+          {/* Sécurité : changement de mot de passe (optionnel) */}
+          <View style={[styles.profileSection, { marginTop: 8 }]}>
+            <Text style={styles.sectionTitle}>Sécurité</Text>
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Mot de passe actuel</Text>
+              {isEditing ? (
+                <TextInput
+                  style={styles.input}
+                  value={editedProfile?.currentPassword || ""}
+                  onChangeText={(v) => updateField("currentPassword", v)}
+                  placeholder="••••••••"
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+              ) : (
+                <Text style={styles.fieldValue}>••••••••</Text>
+              )}
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Nouveau mot de passe</Text>
+              {isEditing ? (
+                <TextInput
+                  style={styles.input}
+                  value={editedProfile?.newPassword || ""}
+                  onChangeText={(v) => updateField("newPassword", v)}
+                  placeholder="Au moins 8 caractères"
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+              ) : (
+                <Text style={styles.fieldValue}>••••••••</Text>
+              )}
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Confirmer le nouveau mot de passe</Text>
+              {isEditing ? (
+                <TextInput
+                  style={styles.input}
+                  value={editedProfile?.newPasswordConfirm || ""}
+                  onChangeText={(v) => updateField("newPasswordConfirm", v)}
+                  placeholder="Répétez le nouveau mot de passe"
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+              ) : (
+                <Text style={styles.fieldValue}>••••••••</Text>
               )}
             </View>
           </View>
@@ -297,7 +376,7 @@ export default function Profil() {
           {/* Paramètres et actions */}
           <View style={styles.settingsSection}>
             <Text style={styles.sectionTitle}>Paramètres</Text>
-            
+
             <TouchableOpacity style={styles.settingItem}>
               <View style={styles.settingLeft}>
                 <Ionicons name="notifications-outline" size={20} color="#64748b" />
@@ -341,8 +420,8 @@ export default function Profil() {
 
           {/* Retour aux rendez-vous */}
           <View style={styles.backSection}>
-            <TouchableOpacity 
-              style={styles.backButton} 
+            <TouchableOpacity
+              style={styles.backButton}
               onPress={() => router.push("/rendezvous")}
             >
               <Ionicons name="arrow-back-outline" size={18} color="#2563eb" style={{ marginRight: 8 }} />
@@ -367,269 +446,85 @@ const colors = {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-  },
-  
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  
-  loadingText: {
-    fontSize: 16,
-    color: colors.subtext,
-  },
-
-  header: {
-    alignItems: "center",
-    marginBottom: 24,
-    paddingTop: 20,
-  },
-
-  avatarContainer: {
-    position: "relative",
-    marginBottom: 16,
-  },
-
+  container: { flex: 1, padding: 20 },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingText: { fontSize: 16, color: colors.subtext },
+  header: { alignItems: "center", marginBottom: 24, paddingTop: 20 },
+  avatarContainer: { position: "relative", marginBottom: 16 },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 4,
-    borderColor: "#fff",
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
+    width: 100, height: 100, borderRadius: 50,
+    borderWidth: 4, borderColor: "#fff",
+    shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 }, elevation: 5,
   },
-
   avatarBadge: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    backgroundColor: colors.primary,
-    borderRadius: 20,
-    width: 40,
-    height: 40,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 3,
-    borderColor: "#fff",
+    position: "absolute", bottom: 0, right: 0,
+    backgroundColor: colors.primary, borderRadius: 20,
+    width: 40, height: 40, justifyContent: "center", alignItems: "center",
+    borderWidth: 3, borderColor: "#fff",
   },
-
-  userName: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: colors.text,
-    marginBottom: 4,
-  },
-
-  userEmail: {
-    fontSize: 16,
-    color: colors.subtext,
-  },
-
-  actionButtons: {
-    marginBottom: 24,
-  },
-
+  userName: { fontSize: 24, fontWeight: "800", color: colors.text, marginBottom: 4 },
+  userEmail: { fontSize: 16, color: colors.subtext },
+  actionButtons: { marginBottom: 24 },
   editButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    backgroundColor: colors.primary, borderRadius: 14,
+    paddingVertical: 14, paddingHorizontal: 20, flexDirection: "row",
+    justifyContent: "center", alignItems: "center",
+    shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 }, elevation: 3,
   },
-
-  editButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-
-  editActions: {
-    flexDirection: "row",
-    gap: 12,
-  },
-
+  editButtonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  editActions: { flexDirection: "row", gap: 12 },
   cancelButton: {
-    flex: 1,
-    backgroundColor: "#f1f5f9",
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
+    flex: 1, backgroundColor: "#f1f5f9", borderRadius: 14,
+    paddingVertical: 14, paddingHorizontal: 20, justifyContent: "center",
+    alignItems: "center", borderWidth: 1, borderColor: colors.border,
   },
-
-  cancelButtonText: {
-    color: colors.subtext,
-    fontSize: 16,
-    fontWeight: "600",
-  },
-
+  cancelButtonText: { color: colors.subtext, fontSize: 16, fontWeight: "600" },
   saveButton: {
-    flex: 1,
-    backgroundColor: "#059669",
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    flex: 1, backgroundColor: "#059669", borderRadius: 14,
+    paddingVertical: 14, paddingHorizontal: 20, flexDirection: "row",
+    justifyContent: "center", alignItems: "center",
+    shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 }, elevation: 3,
   },
-
-  saveButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-
+  saveButtonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   profileSection: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    backgroundColor: colors.card, borderRadius: 20, padding: 20, marginBottom: 20,
+    shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 }, elevation: 2,
   },
-
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: colors.text,
-    marginBottom: 16,
-  },
-
-  fieldGroup: {
-    marginBottom: 16,
-  },
-
-  fieldLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.subtext,
-    marginBottom: 6,
-  },
-
+  sectionTitle: { fontSize: 18, fontWeight: "700", color: colors.text, marginBottom: 16 },
+  fieldGroup: { marginBottom: 16 },
+  fieldLabel: { fontSize: 14, fontWeight: "600", color: colors.subtext, marginBottom: 6 },
   fieldValue: {
-    fontSize: 16,
-    color: colors.text,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: "#f8fafc",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
+    fontSize: 16, color: colors.text, paddingVertical: 12, paddingHorizontal: 16,
+    backgroundColor: "#f8fafc", borderRadius: 12, borderWidth: 1, borderColor: colors.border,
   },
-
   input: {
-    fontSize: 16,
-    color: colors.text,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.primary,
+    fontSize: 16, color: colors.text, paddingVertical: 12, paddingHorizontal: 16,
+    backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: colors.primary,
   },
-
   settingsSection: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    backgroundColor: colors.card, borderRadius: 20, padding: 20, marginBottom: 20,
+    shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 }, elevation: 2,
   },
-
-  settingItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-
-  settingLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-
-  settingText: {
-    fontSize: 16,
-    color: colors.text,
-    fontWeight: "500",
-  },
-
-  logoutSection: {
-    marginBottom: 20,
-  },
-
+  settingItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
+  settingLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
+  settingText: { fontSize: 16, color: colors.text, fontWeight: "500" },
+  logoutSection: { marginBottom: 20 },
   logoutButton: {
-    backgroundColor: "#fef2f2",
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#fecaca",
+    backgroundColor: "#fef2f2", borderRadius: 14, paddingVertical: 14, paddingHorizontal: 20,
+    flexDirection: "row", justifyContent: "center", alignItems: "center",
+    borderWidth: 1, borderColor: "#fecaca",
   },
-
-  logoutButtonText: {
-    color: colors.danger,
-    fontSize: 16,
-    fontWeight: "600",
-  },
-
-  backSection: {
-    marginBottom: 40,
-  },
-
+  logoutButtonText: { color: colors.danger, fontSize: 16, fontWeight: "600" },
+  backSection: { marginBottom: 40 },
   backButton: {
-    backgroundColor: "#eff6ff",
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#dbeafe",
+    backgroundColor: "#eff6ff", borderRadius: 14, paddingVertical: 14, paddingHorizontal: 20,
+    flexDirection: "row", justifyContent: "center", alignItems: "center",
+    borderWidth: 1, borderColor: "#dbeafe",
   },
-
-  backButtonText: {
-    color: colors.primary,
-    fontSize: 16,
-    fontWeight: "600",
-  },
+  backButtonText: { color: colors.primary, fontSize: 16, fontWeight: "600" },
 });
-
